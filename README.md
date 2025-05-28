@@ -34,9 +34,9 @@ This method involves downloading (or cloning) the server's source code and confi
 
      ```bash
      # Replace with the actual URL of the C# MCP server repository
-     git clone https://github.com/your-org/netwrix-auditor-mcp-csharp.git
+     git clone https://github.com/netwrix/mcp-server-auditor.git
      # Navigate into the root directory of the cloned repository
-     cd netwrix-auditor-mcp-csharp
+     cd mcp-server-auditor
      ```
    * **If downloaded as ZIP:** Extract the ZIP file to a known location on your computer. Open your terminal and navigate into the extracted folder (the one containing the solution `.sln` or project `.csproj` file).
 2. **Identify Project Path:**
