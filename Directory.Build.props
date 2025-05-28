@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <Company>Netwrix Corporation</Company>
+    <Product>Netwrix Auditor MCP Server</Product>
+    <Copyright>Copyright © $([System.DateTime]::Now.Year) Netwrix Corporation. All rights reserved.</Copyright>
+    <VersionPrefix>1.0.0</VersionPrefix>
+  </PropertyGroup>
+
+</Project>

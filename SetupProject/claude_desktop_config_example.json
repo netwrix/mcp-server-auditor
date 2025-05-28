@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "netwrix-auditor-local": {
+      "command": "{path to server}\\NetwrixAuditorMCPServer.exe}",
+      "args": [],
+      "env": {
+        "NETWRIX_API_URL": "https://your-netwrix-server:9699",
+        "NETWRIX_API_USERNAME": "domain\\user",
+        "NETWRIX_API_PASSWORD": "***"
+      }
+    }
+  }
+}

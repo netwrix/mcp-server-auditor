@@ -1,0 +1,184 @@
+trigger: none
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  - group: AZURE_SIGN_TOOL
+  - name: projectRootInRepo
+    value: 'MCPServerForNetwrixAuditor'
+  - name: buildSourcesDirectory
+    value: '$(Build.SourcesDirectory)'
+  - name: projectActualRoot
+    value: '$(buildSourcesDirectory)/$(projectRootInRepo)'
+  - name: setupProjectFolder
+    value: 'SetupProject'
+  - name: buildConfiguration
+    value: 'Release'
+  - name: productNameForSigning
+    value: 'Netwrix Auditor MCP Server'
+  - name: companyNameForSigning
+    value: 'Netwrix Corporation'
+  - name: publishedExePath
+    value: '$(projectActualRoot)/bin/$(buildConfiguration)/net9.0/win-x64/publish/NetwrixAuditorMCPServer.exe'
+  - name: builtMsiPath
+    value: '$(projectActualRoot)/$(setupProjectFolder)/bin/x64/$(buildConfiguration)/NetwrixAuditorMCPServer-Setup.msi'
+
+steps:
+- checkout: self
+  clean: true
+
+- task: PowerShell@2
+  displayName: 'Debug Initial Paths'
+  inputs:
+    targetType: 'inline'
+    script: |
+      Write-Host "Build.SourcesDirectory (Repo Root): $(Build.SourcesDirectory)"
+      Write-Host "projectRootInRepo: $(projectRootInRepo)"
+      Write-Host "projectActualRoot (Project Root in Repo): $(projectActualRoot)"
+      Write-Host "setupProjectFolder (relative to projectActualRoot): $(setupProjectFolder)"
+      Write-Host "Calculated path to SetupProject: $(projectActualRoot)/$(setupProjectFolder)"
+      Write-Host "--- Listing content of $(Build.SourcesDirectory) (Repo Root) ---"
+      Get-ChildItem -Path "$(Build.SourcesDirectory)" -Depth 1 | ForEach-Object { Write-Host $_.FullName }
+      Write-Host "--- Listing content of $(projectActualRoot) (Project Root) ---"
+      if (Test-Path "$(projectActualRoot)") {
+        Get-ChildItem -Path "$(projectActualRoot)" -Depth 1 | ForEach-Object { Write-Host $_.FullName }
+      } else {
+        Write-Warning "Directory $(projectActualRoot) does not exist!"
+      }
+      Write-Host "Checking existence of $(projectActualRoot)/$(setupProjectFolder): $(Test-Path -Path "$(projectActualRoot)/$(setupProjectFolder)")"
+
+- task: PowerShell@2
+  displayName: 'Install AzureSignTool'
+  inputs:
+    targetType: 'inline'
+    script: |
+      dotnet tool install --global AzureSignTool
+      Write-Host "##vso[task.setvariable variable=PATH]$env:PATH;$HOME\.dotnet\tools"
+
+- task: CmdLine@2
+  displayName: 'Clean and Publish Main Project (from build.cmd logic)'
+  inputs:
+    script: |
+      @echo off
+      echo Building Netwrix Auditor MCP Server Setup (Part 1 - Publish EXE)...
+      echo Cleaning previous builds from SetupProject context...
+      if exist bin rmdir /s /q bin
+      if exist obj rmdir /s /q obj
+      if exist CustomActions\bin rmdir /s /q CustomActions\bin
+      if exist CustomActions\obj rmdir /s /q CustomActions\obj
+      echo Cleaning previous builds from Project Root context...
+      cd .. 
+      if exist bin rmdir /s /q bin
+      if exist obj rmdir /s /q obj
+      cd $(setupProjectFolder)
+      echo Building and publishing main project...
+      cd ..
+      dotnet restore NetwrixAuditorMCPServer.csproj
+      dotnet publish NetwrixAuditorMCPServer.csproj -c $(buildConfiguration) -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true -o "$(projectActualRoot)/bin/$(buildConfiguration)/net9.0/win-x64/publish"
+      if errorlevel 1 (
+          echo Main project publish failed!
+          exit /b 1
+      )
+      echo Main project published to $(publishedExePath)
+      cd $(setupProjectFolder)
+    workingDirectory: '$(projectActualRoot)/$(setupProjectFolder)'
+
+- task: AzureKeyVault@2
+  displayName: 'Read Signing Secrets from Azure Key Vault'
+  inputs:
+    azureSubscription: 'AppSec Prod-NetwrixAuditor'
+    KeyVaultName: 'kv-appsec-hsm-prod'
+    SecretsFilter: 'HsmSigningAppClientId,HsmSigningAppClientSecret,HsmSigningCertificateName'
+
+- task: PowerShell@2
+  displayName: 'Sign Main Executable'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $fileToSign = "$(publishedExePath)" 
+      Write-Host "File to sign (EXE): $fileToSign"
+      if (-not (Test-Path $fileToSign)) { Write-Error "EXE file not found for signing: $fileToSign"; exit 1 }
+      $signingClientId = "$(HsmSigningAppClientId)"
+      $signingClientSecret = "$(HsmSigningAppClientSecret)"
+      $signingCertificateName = "$(HsmSigningCertificateName)"
+      $signingKeyVaultUri = "$(CODESIGNINGKEYVAULTURI)"
+      $signingKeyVaultTenantId = "$(CODESIGNINGKEYVAULTTENANTID)"
+      $signature = Get-AuthenticodeSignature -FilePath $fileToSign
+      if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::NotSigned -and $signature.Status -ne [System.Management.Automation.SignatureStatus]::UnknownError) {
+          Write-Host "EXE file '$fileToSign' is already signed or error. Skipping."
+      }
+      $azArgs = @("sign", "-kvu", $signingKeyVaultUri, "-kvc", $signingCertificateName, "-kvt", $signingKeyVaultTenantId, "-kvi", $signingClientId, "-kvs", $signingClientSecret, "-tr", "http://timestamp.digicert.com", "-coe", "-s", """$fileToSign""", "-d", """$(productNameForSigning)""")
+      Write-Host "Executing: azuresigntool $($azArgs -join ' ')"
+      $processInfo = New-Object System.Diagnostics.ProcessStartInfo; $processInfo.FileName = "azuresigntool"; $processInfo.Arguments = $azArgs -join " "; $processInfo.RedirectStandardError = $true; $processInfo.RedirectStandardOutput = $true; $processInfo.UseShellExecute = $false; $processInfo.CreateNoWindow = $true
+      $process = New-Object System.Diagnostics.Process; $process.StartInfo = $processInfo; $process.Start() | Out-Null; $stdout = $process.StandardOutput.ReadToEnd(); $stderr = $process.StandardError.ReadToEnd(); $process.WaitForExit()
+      Write-Host "AzureSignTool STDOUT (EXE Signing):"; Write-Host $stdout
+      if ($process.ExitCode -ne 0) { Write-Host "##[error]AzureSignTool failed for EXE with exit code $($process.ExitCode)."; if (-not [string]::IsNullOrEmpty($stderr)) { Write-Host "##[error]AzureSignTool STDERR (EXE Signing):"; Write-Host $stderr }; exit 1 } elseif (-not [string]::IsNullOrEmpty($stderr)) { Write-Host "##[warning]AzureSignTool STDERR (EXE Signing - ExitCode was 0):"; Write-Host $stderr }
+      Write-Host "EXE signing finished."
+
+- task: CmdLine@2
+  displayName: 'Build CustomActions and MSI Installer (from build.cmd logic)'
+  inputs:
+    script: |
+      @echo off
+      echo Building Netwrix Auditor MCP Server Setup (Part 2 - Build MSI)...
+      echo Building custom actions...
+      cd CustomActions
+      dotnet restore
+      dotnet build -c $(buildConfiguration)
+      if errorlevel 1 (
+          echo Custom actions build failed!
+          exit /b 1
+      )
+      cd ..
+      echo Building installer...
+      dotnet restore SetupProject.wixproj
+      dotnet build SetupProject.wixproj -c $(buildConfiguration) 
+      if errorlevel 1 (
+          echo Installer build failed!
+          exit /b 1
+      )
+      echo MSI built at $(builtMsiPath)
+    workingDirectory: '$(projectActualRoot)/$(setupProjectFolder)'
+
+- task: PowerShell@2
+  displayName: 'Sign MSI Installer'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $fileToSign = "$(builtMsiPath)"
+      Write-Host "MSI file to sign: $fileToSign"
+      if (-not (Test-Path $fileToSign)) { Write-Error "MSI file not found for signing: $fileToSign"; exit 1 }
+      $signingClientId = "$(HsmSigningAppClientId)"
+      $signingClientSecret = "$(HsmSigningAppClientSecret)"
+      $signingCertificateName = "$(HsmSigningCertificateName)"
+      $signingKeyVaultUri = "$(CODESIGNINGKEYVAULTURI)"
+      $signingKeyVaultTenantId = "$(CODESIGNINGKEYVAULTTENANTID)"
+      $signature = Get-AuthenticodeSignature -FilePath $fileToSign
+      if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::NotSigned -and $signature.Status -ne [System.Management.Automation.SignatureStatus]::UnknownError) {
+          Write-Host "MSI file '$fileToSign' is already signed or error. Skipping."
+
+      }
+      $azArgs = @("sign", "-kvu", $signingKeyVaultUri, "-kvc", $signingCertificateName, "-kvt", $signingKeyVaultTenantId, "-kvi", $signingClientId, "-kvs", $signingClientSecret, "-tr", "http://timestamp.digicert.com", "-coe", "-s", """$fileToSign""", "-d", """$(productNameForSigning)""")
+      Write-Host "Executing: azuresigntool $($azArgs -join ' ')"
+      $processInfo = New-Object System.Diagnostics.ProcessStartInfo; $processInfo.FileName = "azuresigntool"; $processInfo.Arguments = $azArgs -join " "; $processInfo.RedirectStandardError = $true; $processInfo.RedirectStandardOutput = $true; $processInfo.UseShellExecute = $false; $processInfo.CreateNoWindow = $true
+      $process = New-Object System.Diagnostics.Process; $process.StartInfo = $processInfo; $process.Start() | Out-Null; $stdout = $process.StandardOutput.ReadToEnd(); $stderr = $process.StandardError.ReadToEnd(); $process.WaitForExit()
+      Write-Host "AzureSignTool STDOUT (MSI Signing):"; Write-Host $stdout
+      if ($process.ExitCode -ne 0) { Write-Host "##[error]AzureSignTool failed for MSI with exit code $($process.ExitCode)."; if (-not [string]::IsNullOrEmpty($stderr)) { Write-Host "##[error]AzureSignTool STDERR (MSI Signing):"; Write-Host $stderr }; exit 1 } elseif (-not [string]::IsNullOrEmpty($stderr)) { Write-Host "##[warning]AzureSignTool STDERR (MSI Signing - ExitCode was 0):"; Write-Host $stderr }
+      Write-Host "MSI signing finished."
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish Signed MSI'
+  inputs:
+    PathtoPublish: '$(builtMsiPath)'
+    ArtifactName: 'Signed_MSI_Installer'
+    publishLocation: 'Container'
+  condition: succeeded()
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish Signed EXE'
+  inputs:
+    PathtoPublish: '$(publishedExePath)'
+    ArtifactName: 'Signed_Application_EXE'
+    publishLocation: 'Container'
+  condition: succeeded()
