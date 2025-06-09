@@ -64,7 +64,8 @@ This method involves downloading (or cloning) the server's source code and confi
            "args": [
              "run",
              "--project",
-             "C:\\path\\to\\your\\cloned\\repo\\YourServerProject\\YourServerProject.csproj"
+             "C:\\path\\to\\your\\cloned\\repo\\YourServerProject\\YourServerProject.csproj",
+             "--no-build"
            ],
            "cwd": "C:\\path\\to\\your\\cloned\\repo\\YourServerProject",
            "env": {
@@ -92,7 +93,6 @@ This method involves downloading (or cloning) the server's source code and confi
       * Example paths:
         * **Windows**:\nC:\\\\path\\\\to\\\\your\\\\cloned\\\\repo\\\\YourServerProject\\\\YourServerProject.csproj
         * **macOS/Linux**:\n/Users/yourname/path/to/cloned/repo/YourServerProject/YourServerProject.csproj
-      * Optionally, you may add "--no-build" if you prefer to build the project manually in advance.
    4. **Working Directory (cwd)**
       * This should point to the **directory containing** the .csproj file.
    5. **Environment Variables (env)**
