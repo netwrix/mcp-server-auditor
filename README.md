@@ -14,7 +14,60 @@ Before proceeding with the installation, please ensure you have the following:
 
 ## 3. Installation
 
-This section describes how to set up the Netwrix Auditor MCP Server to run locally from source code for use with Claude Desktop.
+The recommended way to install the Netwrix Auditor MCP Server on a Windows machine is by using the official MSI installer. This method is simple, secure, and requires no technical expertise.
+
+### Installation via MSI Installer (Recommended for Windows)
+
+This installer provides a guided, user-friendly setup experience. It installs a self-contained application, securely configures your credentials, and automatically registers the server for use with clients like Claude Desktop.
+
+![MCP Server Installation Process](MCPInstall.gif)
+
+#### Key Benefits of Using the Installer
+
+*   **✅ Easy to Use:** The installation wizard handles everything. No command-line interaction or manual editing of configuration files is required.
+*   **✅ Self-Contained:** You do **not** need to install the .NET 9 SDK or any other dependencies. The server is packaged with everything it needs to run out of the box.
+*   **✅ Secure by Default:** Your Netwrix Auditor password is automatically encrypted using the standard Windows Data Protection API (DPAPI) with `LocalMachine` scope. It is never stored as plain text.
+
+#### Requirements
+
+*   A Windows Operating System.
+*   .NET Framework 4.6.2 or later (this is required to run the installer itself; most modern Windows systems already have it).
+
+#### Installation Steps
+
+1.  **Download the Installer**
+    *   Navigate to the **[Releases](https://github.com/netwrix/mcp-server-auditor/releases)** page of this repository.
+    *   Download the `NetwrixAuditorMCPServer-Setup.msi` file from the latest release.
+
+2.  **Run the Installation Wizard**
+    *   Double-click the downloaded `.msi` file to launch the setup process.
+
+3.  **Enter and Secure Credentials**
+    *   During the installation, the wizard will prompt you to enter your Netwrix Auditor API details.
+    *   Fill in the following fields:
+        *   **Netwrix API URL:** The full URL to your Netwrix API endpoint. In most cases, this will be **`https://localhost:9699`**, assuming the MCP server is installed on the same machine as Netwrix Auditor.
+        *   **Netwrix API Username:** The username for authentication (e.g., `domain\user`).
+        *   **Netwrix API Password:** The password for the specified user.
+    *   The installer will securely save and encrypt this configuration for you.
+
+4.  **Complete the Installation**
+    *   Follow the remaining on-screen prompts to finish the setup. The installer will place the server files in the appropriate location and register it with Claude Desktop.
+
+5.  **🔄 Restart Claude Desktop**
+    *   For the changes to take effect, completely close and then reopen the Claude Desktop application.
+
+6.  **✅ Verify Server Operation**
+    *   In Claude Desktop, look for the tools icon (🔨).
+    *   Click it and verify that the "Netwrix Auditor" tools are listed and available.
+    *   You can now test the connection by asking a relevant question about your audit data.
+
+---
+
+#### Re-configuring the Server
+
+If you need to update your API URL or credentials after installation, you do not need to reinstall.
+
+---
 
 ### Local Installation from Source
 
